@@ -29,7 +29,7 @@ serde_json = "1.0"
 serde_urlencoded = "0.5"
 tokio = "0.1.7"
 tokio-io = "0.1"
-tokio-tls = { path = "../tokio-tls" }
+tokio-tls = { git = "https://github.com/sbditto85/tokio-tls", branch = "update_native_tls" }
 url = "1.2"
 uuid = { version = "0.6", features = ["v4"] }
 
