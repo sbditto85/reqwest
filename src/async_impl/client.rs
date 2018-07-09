@@ -177,7 +177,7 @@ impl ClientBuilder {
     pub fn danger_accept_invalid_certs(&mut self) -> &mut ClientBuilder {
 
         if let Some(config) = config_mut(&mut self.config, &self.err) {
-            config.accept_invalid_certs = false;
+            config.accept_invalid_certs = true;
         }
         self
 
