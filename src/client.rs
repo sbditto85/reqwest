@@ -158,6 +158,21 @@ impl ClientBuilder {
         self
     }
 
+    /// Accept invalid certificats.
+    ///
+    /// # Warning
+    ///
+    /// You should think very carefully before using this method. If
+    /// invalid certificates are trusted, any certificate for any site
+    /// will be trusted for use. This includes expired certificates.
+    /// This introduces significant vulnerabilities, and should only
+    /// be used as a last resort.
+    #[inline]
+    pub fn danger_accept_invalid_certs(&mut self) -> &mut ClientBuilder {
+        self.inner.danger_accept_invalid_certs();
+        self
+    }
+
     /// Enable hostname verification.
     ///
     /// Default is enabled.
