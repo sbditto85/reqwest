@@ -45,6 +45,7 @@ struct Config {
     gzip: bool,
     headers: HeaderMap,
     hostname_verification: bool,
+    accept_invalid_certs: bool,
     proxies: Vec<Proxy>,
     redirect_policy: RedirectPolicy,
     referer: bool,
@@ -56,31 +57,24 @@ struct Config {
 impl ClientBuilder {
     /// Constructs a new `ClientBuilder`
     pub fn new() -> ClientBuilder {
-        match TlsConnector::builder() {
-            Ok(tls_connector_builder) => {
-                let mut headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(2);
-                headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENT));
-                headers.insert(ACCEPT, HeaderValue::from_str(mime::STAR_STAR.as_ref()).expect("unable to parse mime"));
+        let mut headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(2);
+        headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENT));
+        headers.insert(ACCEPT, HeaderValue::from_str(mime::STAR_STAR.as_ref()).expect("unable to parse mime"));
 
-                ClientBuilder {
-                    config: Some(Config {
-                        gzip: true,
-                        headers: headers,
-                        hostname_verification: true,
-                        proxies: Vec::new(),
-                        redirect_policy: RedirectPolicy::default(),
-                        referer: true,
-                        timeout: None,
-                        tls: tls_connector_builder,
-                        dns_threads: 4,
-                    }),
-                    err: None,
-                }
-            },
-            Err(e) => ClientBuilder {
-                config: None,
-                err: Some(::error::from(e)),
-            }
+        ClientBuilder {
+            config: Some(Config {
+                gzip: true,
+                headers: headers,
+                hostname_verification: true,
+                accept_invalid_certs: false,
+                proxies: Vec::new(),
+                redirect_policy: RedirectPolicy::default(),
+                referer: true,
+                timeout: None,
+                tls: TlsConnector::builder(),
+                dns_threads: 4,
+            }),
+            err: None,
         }
     }
 
@@ -98,18 +92,24 @@ impl ClientBuilder {
         if let Some(err) = self.err.take() {
             return Err(err);
         }
-        let config = self.config
+        let mut config = self.config
             .take()
             .expect("ClientBuilder cannot be reused after building a Client");
+
+        if !config.hostname_verification {
+            config.tls.danger_accept_invalid_hostnames(true);
+        }
+
+        if config.accept_invalid_certs {
+            config.tls.danger_accept_invalid_certs(true);
+        }
 
         let tls = try_!(config.tls.build());
 
         let proxies = Arc::new(config.proxies);
 
+
         let mut connector = Connector::new(config.dns_threads, tls, proxies.clone());
-        if !config.hostname_verification {
-            connector.danger_disable_hostname_verification();
-        }
 
         let hyper_client = ::hyper::Client::builder()
             .build(connector);
@@ -133,9 +133,7 @@ impl ClientBuilder {
     pub fn add_root_certificate(&mut self, cert: Certificate) -> &mut ClientBuilder {
         if let Some(config) = config_mut(&mut self.config, &self.err) {
             let cert = ::tls::cert(cert);
-            if let Err(e) = config.tls.add_root_certificate(cert) {
-                self.err = Some(::error::from(e));
-            }
+            config.tls.add_root_certificate(cert);
         }
         self
     }
@@ -144,9 +142,7 @@ impl ClientBuilder {
     pub fn identity(&mut self, identity: Identity) -> &mut ClientBuilder {
         if let Some(config) = config_mut(&mut self.config, &self.err) {
             let pkcs12 = ::tls::pkcs12(identity);
-            if let Err(e) = config.tls.identity(pkcs12) {
-                self.err = Some(::error::from(e));
-            }
+            config.tls.identity(pkcs12);
         }
         self
     }
@@ -166,6 +162,25 @@ impl ClientBuilder {
             config.hostname_verification = false;
         }
         self
+    }
+
+    /// Accept invalid certificats.
+    ///
+    /// # Warning
+    ///
+    /// You should think very carefully before using this method. If
+    /// invalid certificates are trusted, any certificate for any site
+    /// will be trusted for use. This includes expired certificates.
+    /// This introduces significant vulnerabilities, and should only
+    /// be used as a last resort.
+    #[inline]
+    pub fn danger_accept_invalid_certs(&mut self) -> &mut ClientBuilder {
+
+        if let Some(config) = config_mut(&mut self.config, &self.err) {
+            config.accept_invalid_certs = false;
+        }
+        self
+
     }
 
     /// Enable hostname verification.
